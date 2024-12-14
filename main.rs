@@ -8,7 +8,8 @@
 
 use std::collections::HashMap;
 use std::collections::VecDeque;
-use std::fs;
+use std::env::vars;
+use std::fs;    
 
 fn main() {
     println!("I Love You Amma");
@@ -37,12 +38,13 @@ fn main() {
     
     stack.clone().print();
     
-    let code = String::from(fs::read_to_string("Nagapillaiyar.orc").unwrap());
+    let code = String::from(fs::read_to_string("test/main.orc").unwrap());
     let mut parser = Parser::new(code);
     let ast = parser.generate_ast();
-    let mut interpreter = Interpreter::new(Expr::Program(ast.clone()));
-    interpreter.evaluate(Expr::Program(ast), Stack::new());
-    println!("{:#?}", interpreter.stack);
+    // let mut interpreter = Interpreter::new(Expr::Program(ast.clone()));
+    // interpreter.evaluate(Expr::Program(ast), Stack::new());
+    // println!("{:#?}", interpreter.stack);
+    println!("{:#?}", ast);
 }
 
 #[derive(Debug, PartialEq, Clone)]
@@ -66,6 +68,8 @@ pub enum TokenType {
     Number,
     Identifier,
     Equals,
+    
+    // Symbols:
     Comma,
     Dot,
     Colon,
@@ -78,8 +82,13 @@ pub enum TokenType {
     CloseBracket,
     Quote,
     BinaryOperator,
+    Ampersand,
+    Star,
+    
     Let,
     Const,
+    
+    // Types:
     N8, N16, N32, N64, N128,
     U8, U16, U32, U64, U128,
     F32, F64,
@@ -104,7 +113,7 @@ fn token(value: String, val_type: TokenType) -> Token {
 }
 
 fn is_alpha(c: char) -> bool {
-    return c.is_alphabetic();
+    return c.is_alphabetic() || is_int(c);
 }
 
 fn is_int(c: char) -> bool {
@@ -147,7 +156,12 @@ pub fn tokenize(code: String) -> Vec<Token> {
             '}' => tokens.push(token("}".to_string(), TokenType::CloseBrace)),
             '[' => tokens.push(token("[".to_string(), TokenType::OpenBracket)),
             ']' => tokens.push(token("]".to_string(), TokenType::CloseBracket)),
-            '+' | '-' | '*' | '/' | '%' => tokens.push(token("+".to_string(), TokenType::BinaryOperator)),
+            '+' => tokens.push(token("+".to_string(), TokenType::BinaryOperator)),
+            '-' => tokens.push(token("-".to_string(), TokenType::BinaryOperator)),
+            '*' => tokens.push(token("*".to_string(), TokenType::Star)),
+            '/' => tokens.push(token("/".to_string(), TokenType::BinaryOperator)),
+            '%' => tokens.push(token("%".to_string(), TokenType::BinaryOperator)),
+            '&' => tokens.push(token("&".to_string(), TokenType::Ampersand)),
             '=' => tokens.push(token("=".to_string(), TokenType::Equals)),
             ';' => tokens.push(token(";".to_string(), TokenType::Semicolon)),
             ':' => tokens.push(token(":".to_string(), TokenType::Colon)),
@@ -520,10 +534,12 @@ enum NodeType {
     MemberExpr,
     CallExpr,
     BinaryExpr,
+    BorrowExpr,
     
     Number,
     String,
     Object,
+    Vector,
     Property,
     Identifier,
 }
@@ -537,10 +553,12 @@ enum Expr {
     MemberExpr(MemberExpr),
     CallExpr(CallExpr),
     BinaryExpr(BinaryExpr),
+    BorrowExpr(BorrowExpr),
     
     NumberLiteral(NumberLiteral),
     StringLiteral(StringLiteral),
     ObjectLiteral(ObjectLiteral),
+    VectorLiteral(VectorLiteral),
     Property(Property),
     Identifier(Identifier),
 }
@@ -592,6 +610,12 @@ struct BinaryExpr {
 }
 
 #[derive(Debug, Clone)]
+struct BorrowExpr {
+    kind: NodeType,
+    pointer: Token,
+}
+
+#[derive(Debug, Clone)]
 struct NumberLiteral {
     kind: NodeType,
     value: i128
@@ -607,6 +631,12 @@ struct StringLiteral {
 struct ObjectLiteral {
     kind: NodeType,
     properties: Vec<Property>,
+}
+
+#[derive(Debug, Clone)]
+struct VectorLiteral {
+    kind: NodeType,
+    array: Vec<Expr>
 }
 
 #[derive(Debug, Clone)]
@@ -704,64 +734,56 @@ impl Parser {
                 value: prev.value,
                 val_type: TokenType::POINTER
             };
-        } else if prev.value == "n" {
-            let next = self.eat().value;
-            
-            if next == "8" {
-                return Token {
-                    value: prev.value,
-                    val_type: TokenType::N8
-                };
-            } else if next == "16" {
-                return Token {
-                    value: prev.value,
-                    val_type: TokenType::N16
-                };
-            } else if next == "32" {
-                return Token {
-                    value: prev.value,
-                    val_type: TokenType::N32
-                };
-            } else if next == "64" {
-                return Token {
-                    value: prev.value,
-                    val_type: TokenType::N64
-                };
-            } else if next == "128" {
-                return Token {
-                    value: prev.value,
-                    val_type: TokenType::N128
-                };
-            }
-        } else if prev.value == "u" {
-            let next = self.eat().value;
-            
-            if next == "8" {
-                return Token {
-                    value: prev.value,
-                    val_type: TokenType::U8
-                };
-            } else if next == "16" {
-                return Token {
-                    value: prev.value,
-                    val_type: TokenType::U16
-                };
-            } else if next == "32" {
-                return Token {
-                    value: prev.value,
-                    val_type: TokenType::U32
-                };
-            } else if next == "64" {
-                return Token {
-                    value: prev.value,
-                    val_type: TokenType::U64
-                };
-            } else if next == "128" {
-                return Token {
-                    value: prev.value,
-                    val_type: TokenType::U128
-                };
-            }
+        } else if prev.value == "n8" {
+            return Token {
+                value: prev.value,
+                val_type: TokenType::N8
+            };
+        } else if prev.value == "n16" {
+            return Token {
+                value: prev.value,
+                val_type: TokenType::N16
+            };
+        } else if prev.value == "n32" {
+            return Token {
+                value: prev.value,
+                val_type: TokenType::N32
+            };
+        } else if prev.value == "n64" {
+            return Token {
+                value: prev.value,
+                val_type: TokenType::N64
+            };
+        } else if prev.value == "n128" {
+            return Token {
+                value: prev.value,
+                val_type: TokenType::N128
+            };
+        } else if prev.value == "u8" {
+            return Token {
+                value: prev.value,
+                val_type: TokenType::U8
+            };
+        } else if prev.value == "u16" {
+            return Token {
+                value: prev.value,
+                val_type: TokenType::U16
+            };
+        } else if prev.value == "u32" {
+            return Token {
+                value: prev.value,
+                val_type: TokenType::U32
+            };
+        } else if prev.value == "u64" {
+            return Token {
+                value: prev.value,
+                val_type: TokenType::U64
+            };
+        } else if prev.value == "u32" {
+            return Token {
+                value: prev.value,
+                val_type: TokenType::U128
+            };
         }
         
         panic!("BestOrchid: Parser Error - Expected variable type: found {}.", prev.value);
@@ -831,6 +853,27 @@ impl Parser {
     
         return left;
     }
+     
+    fn parse_vector_expression(&mut self) -> Expr {
+        self.eat();
+        
+        let mut array: Vec<Expr> = Vec::new();
+        
+        while self.at().val_type != TokenType::CloseBracket {
+            if self.at().val_type != TokenType::Comma {
+                array.push(self.parse_expression());
+            } else {
+                self.eat();
+            }
+        }
+        
+        self.eat();
+        
+        return Expr::VectorLiteral(VectorLiteral {
+            kind: NodeType::Vector,
+            array,
+        });
+    }
     
     fn parse_object_expression(&mut self) -> Expr {
         // { Prop[] }
@@ -852,7 +895,7 @@ impl Parser {
             ).value;
         
             // Allows shorthand key: pair -> key:
-            if (self.at().val_type == TokenType::Comma) {
+            if self.at().val_type == TokenType::Comma {
                 self.eat(); // Advance Past Comma
     
                 properties.push(Property {
@@ -862,7 +905,7 @@ impl Parser {
                 });
     
                 continue;
-            } else if (self.at().val_type == TokenType::CloseBrace) {
+            } else if self.at().val_type == TokenType::CloseBrace {
                 properties.push(Property {
                     kind: NodeType::Property,
                     key,
@@ -1065,12 +1108,25 @@ impl Parser {
                 let mut str = self.at().value;
                 
                 while self.eat().val_type != TokenType::Quote {
-                    str.push_str(&self.at().value);
+                    str.push_str(&self.at().value.replace("\"", ""));
                 }
                 
                 return Expr::StringLiteral(StringLiteral {
                     kind: NodeType::String,
                     value: str
+                });
+            }
+            
+            TokenType::OpenBracket => {
+                return self.parse_vector_expression();
+            }
+            
+            TokenType::Ampersand => {
+                self.eat();
+                
+                return Expr::BorrowExpr(BorrowExpr {
+                    kind: NodeType::BorrowExpr,
+                    pointer: self.eat(),
                 });
             }
             
