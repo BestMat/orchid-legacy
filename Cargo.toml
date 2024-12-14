@@ -1,0 +1,10 @@
+[package]
+name = "bestorchid-nagapillaiyarsai"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+
+[[bin]]
+name = "bestorchid-nagapillaiyarsai"
+path = "main.rs"
