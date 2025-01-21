@@ -3,5 +3,4 @@
 #[path="src/lexer/lexer.rs"] mod lexer;
 
 fn main() {
-    println!("I Love You Amma");
 }
